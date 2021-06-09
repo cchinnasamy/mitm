@@ -30,6 +30,11 @@ import ssl
 
 from .client import EmulatedClient
 from .utils import HTTPRequest, color
+import re
+import requests
+
+
+base_url = 'http://booster.xxxxx.workers.dev/?url={url}'
 
 
 class HTTP(asyncio.Protocol):
@@ -47,39 +52,27 @@ class HTTP(asyncio.Protocol):
         self.transport = transport
 
     def data_received(self, data):
-        # Creates emulated client.
-        emulated_client = EmulatedClient()
-
-        # Printing prompt.
-        print(color.yellow("\nSENDING DATA:\n"))
-
-        # Checks if we are in the HTTP or HTTPS class.
+      
+        is_https = False
+        host = ''
         if "connect_statement" in self.__dict__:
-            emulated_client.sock_connect_tls(self.connect_statement)
+            is_https = True
+            host_line = self.connect_statement.decode('utf8')
+            host = re.search(r'^(.*?) (.*?) (.*)', host_line, re.S).group(2)
+            print(host, host_line)
 
-            # Prints the connect statement.
-            print(self.connect_statement, "\n")
-        else:
-            emulated_client.sock_connect(data)
+        _d = data.decode('utf8')
+        url = re.search(r'^(.*?) (.*?) (.*)', _d, re.S).group(2)
+        if is_https and not url.startswith('http'):
+            url = url.strip('/')
+            url = f'https://{host}/{url}'
 
-        # Prints the data.
-        print(data)
-
-        # Sends the data to the server.
-        emulated_client.sock_send(data)
-
-        # Recives the reply and responds back to client.
-        reply = emulated_client.sock_receive()
-        self.transport.write(reply)
-
-        # Closing the EmulatedClient socket.
-        emulated_client.sock_close()
-
-        # Printing the reply back to console.
-        print(color.yellow("\nSERVER REPLY:\n"))
-        print(reply)
-
-        # Closing connection with the client.
+        _url = base_url.format(url=url)
+        print(_url)
+        response = requests.get(_url)
+        out = f"HTTP/1.1 200 OK\r\n\r\n{response.text}\n"
+        self.transport.write(out.encode('utf-8'))
+       
         self.close()
 
     def close(self):
